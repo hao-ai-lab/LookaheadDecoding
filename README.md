@@ -39,7 +39,7 @@ USE_LADE=0 python applications/chatbot.py  --model_path meta-llama/Llama-2-7b-ch
 ```
 
 ### Use Lookahead decoding in your own code
-You can import and use Lookahead decoding in your own code in three LoCs. Note that Lookahead decoding only support LLaMA and Greedy Search yet.
+You can import and use Lookahead decoding in your own code in three LoCs. You also need to set ```USE_LADE=1``` in command line or set ```os.environ["USE_LADE"]="1"``` in Python script. Note that Lookahead decoding only support LLaMA and Greedy Search yet.
 
 ```python
 import lade
