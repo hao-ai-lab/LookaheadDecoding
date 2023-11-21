@@ -1,3 +1,9 @@
+<div align="center"><h1>&nbsp;Break the Sequential Dependency of LLM Inference Using Lookahead Decoding</h1></div>
+
+<p align="center">
+| <a href="https://lmsys.org/blog/2023-11-21-lookahead-decoding/"><b>Blog</b></a> | 
+</p>
+
 ## Introduction 
 We introduce Lookahead Decoding, 
 
@@ -15,8 +21,8 @@ We introduce Lookahead Decoding,
 ## Installation
 ### Install from the source
 ```bash
-git clone https://github.com/hao-ai-lab/ParallelDecoding.git
-cd ParallelDecoding
+git clone https://github.com/hao-ai-lab/LookaheadDecoding.git
+cd LookaheadDecoding
 pip install -r requirements.txt
 pip install -e .
 ```
@@ -47,7 +53,15 @@ lade.augment_all()
 lade.config_pading(LEVEL=5, WINDOW_SIZE=7, GUESS_SET_SIZE=7, DEBUG=0)
 ```
 ## Citation
-
+```bibtex
+@misc{fu2023lookahead,
+    title = {Breaking the Sequential Dependency of LLM Inference Using Lookahead Decoding},
+    url = {https://lmsys.org/blog/2023-11-21-lookahead-decoding/},
+    author = {Yichao Fu and Peter Bailis and Ion Stoica and Hao Zhang},
+    month = {November},
+    year = {2023}
+}
+```
 ## Guidance
 The core implementation is in decoding.py. Lookahead decoding requires an adaptation for each specific model. An example is in models/llama.py.
 

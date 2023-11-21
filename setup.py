@@ -8,6 +8,7 @@ if __name__ == '__main__':
         author='Fu Yichao',
         author_email='yichaofu2000@outlook.com',
         license='Apache-2',
-        url='https://github.com/hao-ai-lab/ParallelDecoding.git',
-        packages=['lade'])
+        url='https://github.com/hao-ai-lab/LookaheadDecoding.git',
+        packages=['lade']
+    )
 
