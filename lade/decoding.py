@@ -5,7 +5,16 @@ import inspect
 import warnings
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Union
-from transformers.generation.utils import LogitsProcessorList, StoppingCriteriaList, GreedySearchOutput
+from transformers.generation.utils import (
+    LogitsProcessorList,
+    StoppingCriteriaList,
+    GreedySearchOutput,
+    BaseStreamer,
+    validate_stopping_criteria,
+    GreedySearchEncoderDecoderOutput,
+    GreedySearchDecoderOnlyOutput,
+    dist,
+)
 import os, time
 FUNC_MAP = {}
 CONFIG_MAP = {}
