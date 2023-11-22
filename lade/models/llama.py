@@ -1,6 +1,14 @@
 import torch, math, time
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Union
-from transformers.models.llama.modeling_llama import BaseModelOutputWithPast, CausalLMOutputWithPast, _expand_mask
+from transformers.models.llama.modeling_llama import (
+    BaseModelOutputWithPast,
+    CausalLMOutputWithPast,
+    _expand_mask,
+    logger,
+)
+from torch.nn import CrossEntropyLoss
+import torch.nn.functional as F
+
 
 def j_make_causal_mask_multilevel(
     level_sizes: list,is_prefill:bool, WINDOW_SIZE: int, guess : list, guess_size: int, not_seq:bool, continue_all:bool,input_ids_shape: torch.Size, dtype: torch.dtype, device: torch.device, past_key_values_length: int = 0
