@@ -5,11 +5,11 @@ import inspect
 import warnings
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Union
+from transformers.generation.streamers import BaseStreamer
 from transformers.generation.utils import (
     LogitsProcessorList,
     StoppingCriteriaList,
     GreedySearchOutput,
-    BaseStreamer,
     validate_stopping_criteria,
     GreedySearchEncoderDecoderOutput,
     GreedySearchDecoderOnlyOutput,
