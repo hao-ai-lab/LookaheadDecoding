@@ -6,7 +6,7 @@
 
 ## Introduction 
 We introduce lookahead decoding:
-- A parallel decoding algo to accelerate LLM inference.
+- A parallel decoding algorithm to accelerate LLM inference.
 - Without the need for a draft model or a data store.
 - Linearly decreases #decoding steps relative to log(FLOPs) used per decoding step.
 
@@ -25,7 +25,7 @@ Below is a demo of lookahead decoding accelerating LLaMa-2-Chat 7B generation:
 
 ### Background: Parallel LLM Decoding Using Jacobi Iteration
 
-Lookahead decoding is motivated by [Jacobi decoding](https://arxiv.org/pdf/2305.10427.pdf), which views the autoregressive decoding as solving nonlinear systems, and decodes all future tokens at once using fixed-point iteration method. Below is an Jacobi decoding example.
+Lookahead decoding is motivated by [Jacobi decoding](https://arxiv.org/pdf/2305.10427.pdf), which views autoregressive decoding as solving nonlinear systems and decodes all future tokens simultaneously using a fixed-point iteration method. Below is a Jacobi decoding example.
 
 <div align="center">
   <picture>
@@ -42,9 +42,9 @@ However, Jacobi decoding can barely see wall-clock speedup in real-world LLM app
 
 ### Lookahead Decoding: Make Jacobi Decoding Feasible
 
-Lookahead decoding takes advantage of Jacobi decoding’s ability by collecting and caching n-grams generated from Jacobi iteration trajectories.
+Lookahead decoding takes advantage of Jacobi decoding's ability by collecting and caching n-grams generated from Jacobi iteration trajectories.
 
-The following gif shows the process of collecting 2-grams via Jacobi decoding and then to verify them to accelerate decoding.
+The following gif shows the process of collecting 2 grams via Jacobi decoding and verifying them to accelerate decoding.
 
 <div align="center">
   <picture>
@@ -52,7 +52,7 @@ The following gif shows the process of collecting 2-grams via Jacobi decoding an
   </picture>
   <br>
   <div align="center" width="80%">
-  <em>Illustration of lookahead decoding with window size 5 and 2-gram.</em>
+  <em>Illustration of lookahead decoding with 2-grams.</em>
   </div>
   <br>
 </div>
@@ -61,17 +61,17 @@ To enhance the efficiency of this process, each lookahead decoding step is divid
 
 ### Lookahead Branch and Verification Branch
 
-The lookahead branch aims to generate new N-grams. The branch operates with a two-dimensional window, defined by two parameters:
+The lookahead branch aims to generate new N-grams. The branch operates with a two-dimensional window defined by two parameters:
+- Window size W: How far ahead we look in future token positions to conduct parallel decoding.
+- N-gram size N: How many steps we look back into the past Jacobi iteration trajectory to retrieve n-grams.
 
-window size W: how far ahead we look in future token positions to conduct parallel decoding.
+In the verification branch, we identify n-grams whose first token matches the last input token. This is determined via simple string match. Once identified, these n-grams are appended to the current input and subjected to verification via an LLM forward pass through them.
 
-N-gram size N: how many steps we look back into the past Jacobi iteration trajectory to retrieve n-grams.
-
-We implement the two branches in one attention mask to further utilize GPU's parallel computing power.
+We implement these branches in one attention mask to further utilize GPU's parallel computing power.
 
 <div align="center">
   <picture>
-  <img src="media/mask.png" width="80%">
+  <img src="media/mask.png" width="40%">
   </picture>
   <br>
   <div align="center" width="80%">
@@ -82,7 +82,7 @@ We implement the two branches in one attention mask to further utilize GPU's par
 
 ### Experimental Results
 
-Our study shows lookahead decoding substantially reduce latency, ranging from 1.5x to 2.3x on different datasets, on a single GPU. See figure below.
+Our study shows lookahead decoding substantially reduces latency, ranging from 1.5x to 2.3x on different datasets on a single GPU. See the figure below.
 
 <div align="center">
   <picture>
