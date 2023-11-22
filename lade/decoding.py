@@ -305,8 +305,9 @@ def jacobi_greedy_search_multilevel(
         #next_tokens_scores = logits_processor(input_ids, next_token_logits)
         next_tokens_scores = next_token_logits
         # argmax
-        next_tokens = torch.argmax(next_tokens_scores, dim=-1)
-
+        #next_tokens = torch.argmax(next_tokens_scores, dim=-1)
+        next_tokens = torch.argmax(torch.nn.functional.gumbel_softmax(next_tokens_scores, tau=1, hard=False, eps=1e-10, dim=-1), dim=-1)
+        
         # finished sentences should have their next token be a padding token
         if eos_token_id is not None:
             if pad_token_id is None:
@@ -323,14 +324,16 @@ def jacobi_greedy_search_multilevel(
         if past_tokens[1] is None:
             assert fill_level == 0
             past_tokens[0] = past_tokens[0][1:] 
-            past_tokens[1] = torch.argmax(outputs.inp_logits, dim=-1)[0].tolist()
+            past_tokens[1] = torch.argmax(torch.nn.functional.gumbel_softmax(outputs.inp_logits, tau=1, hard=False, eps=1e-10, dim=-1), dim=-1)[0].tolist()
+            #past_tokens[1] = torch.argmax(outputs.inp_logits, dim=-1)[0].tolist()
 
             fill_level += 1
         elif past_tokens[LEVEL - 2] is None:
             for level in range(fill_level + 1):
                 past_tokens[level] = past_tokens[level][1:] 
 
-            past_tokens[fill_level + 1] = torch.argmax(outputs.inp_logits, dim=-1)[0].tolist()[1:]
+            #past_tokens[fill_level + 1] = torch.argmax(outputs.inp_logits, dim=-1)[0].tolist()[1:]
+            past_tokens[fill_level + 1] = torch.argmax(torch.nn.functional.gumbel_softmax(outputs.inp_logits), dim=-1)[0].tolist()[1:]
             
             fill_level += 1
         else:
