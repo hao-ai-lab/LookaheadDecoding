@@ -100,9 +100,9 @@ Our study shows lookahead decoding substantially reduces latency, ranging from 1
 - [Contents](#contents)
 - [Installation](#installation)
   - [Install With Pip](#install-with-pip)
-  - [Install From The Source](#install-from-source)
-  - [Inference](#inference)
-  - [Use In Your Own Code](#inference-plugin)
+  - [Install From The Source](#install-from-the-source)
+  - [Inference](#inference-with-lookahead-decoding)
+  - [Use In Your Own Code](#use-lookahead-decoding-in-your-own-code)
 - [Citation](#citation)
 - [Guidance](#guidance)
 
