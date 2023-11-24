@@ -1,7 +1,7 @@
 <div align="center"><h1>&nbsp;Break the Sequential Dependency of LLM Inference Using Lookahead Decoding</h1></div>
 
 <p align="center">
-| <a href="https://lmsys.org/blog/2023-11-21-lookahead-decoding/"><b>Blog</b></a> | <a href="ROADMAP.md"><b>Roadmap</b></a> | 
+| <a href="https://lmsys.org/blog/2023-11-21-lookahead-decoding/"><b>Blog</b></a> | <a href="https://github.com/hao-ai-lab/LookaheadDecoding/issues/13"><b>Roadmap</b></a> | 
 </p>
 
 ## Introduction 
