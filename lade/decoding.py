@@ -335,6 +335,7 @@ def jacobi_greedy_search_multilevel(
         #next_tokens_scores = logits_processor(input_ids, next_token_logits)
         next_tokens_scores = next_token_logits
         # argmax
+
         if temperature == 0:
             next_tokens = torch.argmax(next_tokens_scores, dim=-1)
         else:
@@ -356,18 +357,22 @@ def jacobi_greedy_search_multilevel(
         if past_tokens[1] is None:
             assert fill_level == 0
             past_tokens[0] = past_tokens[0][1:] 
+
             if temperature == 0:
                 past_tokens[1] = torch.argmax(outputs.inp_logits, dim=-1)[0].tolist()
             else:
                 past_tokens[1] = torch.argmax(gumbel(outputs.inp_logits, tau=temperature), dim=-1)[0].tolist()
+
             fill_level += 1
         elif past_tokens[LEVEL - 2] is None:
             for level in range(fill_level + 1):
                 past_tokens[level] = past_tokens[level][1:] 
+
             if temperature == 0:
                 past_tokens[fill_level + 1] = torch.argmax(outputs.inp_logits, dim=-1)[0].tolist()[1:]
             else:
                 past_tokens[fill_level + 1] = torch.argmax(gumbel(outputs.inp_logits, tau=temperature), dim=-1)[0].tolist()[1:]
+
             
             fill_level += 1
         else:
