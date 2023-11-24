@@ -25,7 +25,7 @@ input_text = (
 model_inputs = tokenizer(input_text, return_tensors='pt').to(torch_device)
 
 #warm up
-greedy_output = model.generate(**model_inputs, max_new_tokens=1)
+greedy_output = model.generate(**model_inputs, max_new_tokens=1, do_sample=False)
 #end warm up
 
 # generate 256 new tokens
@@ -35,9 +35,23 @@ greedy_output = model.generate(**model_inputs, max_new_tokens=256, do_sample=Fal
 torch.cuda.synchronize()
 t1 = time.time()
 
-print("Output:\n" + 100 * '-')
+torch.cuda.synchronize()
+t2 = time.time()
+sampled_output = model.generate(**model_inputs, max_new_tokens=256, do_sample=True, temperature=0.8)
+torch.cuda.synchronize()
+t3 = time.time()
+
+print("Greedy Output:\n" + 100 * '-')
 print(tokenizer.decode(greedy_output[0], skip_special_tokens=False))
 print("Generated Tokens:", (greedy_output.numel() - model_inputs['input_ids'].numel()) ,"Generation Speed: ", (greedy_output.numel() - model_inputs['input_ids'].numel()) / (t1 - t0), " tokens/s")
+
+print()
+
+print("Sampled Output:\n" + 100 * '-')
+print(tokenizer.decode(sampled_output[0], skip_special_tokens=False))
+print("Generated Tokens:", (sampled_output.numel() - model_inputs['input_ids'].numel()) ,"Generation Speed: ", (sampled_output.numel() - model_inputs['input_ids'].numel()) / (t1 - t0), " tokens/s")
+
+
 
 #python minimal.py #44 tokens/s
 #LOAD_LADE=1 USE_LADE=1 python minimal.py #74 tokens/s, 1.6x throughput without changing output distribution!

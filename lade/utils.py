@@ -2,7 +2,7 @@ import os
 from transformers import GenerationMixin
 from transformers.models.llama import modeling_llama 
 
-from .decoding import greedy_search_proxy, FUNC_MAP, CONFIG_MAP
+from .decoding import greedy_search_proxy, sample_proxy, FUNC_MAP, CONFIG_MAP
 from .models import llama
 from transformers import AutoConfig, AutoTokenizer, AutoModelForCausalLM
 import torch 
@@ -30,9 +30,10 @@ def augment_llama():
 def augment_generate():
     FUNC_MAP["greedy_search"] = GenerationMixin.greedy_search
     GenerationMixin.greedy_search = greedy_search_proxy
+    FUNC_MAP["sample"] = GenerationMixin.sample
+    # consider renaming or combining greedy/sample proxy; but the only difference is in the Gumbel noise & temperature config
+    GenerationMixin.sample = sample_proxy 
 
-    #FUNC_MAP["sample"] = GenerationMixin.sample
-    #GenerationMixin.sample = sample_proxy
     
 def augment_all():
     augment_llama()

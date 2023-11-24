@@ -6,6 +6,7 @@ import warnings
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Union
 from transformers.generation.utils import LogitsProcessorList, StoppingCriteriaList, GreedySearchOutput
+from transformers.generation.logits_process import TemperatureLogitsWarper
 import os, time
 FUNC_MAP = {}
 CONFIG_MAP = {}
@@ -23,6 +24,26 @@ def greedy_search_proxy(self, *args, **kwargs):
         return jacobi_greedy_search_multilevel(self, chat=False, *args, **kwargs)
     else:
         return FUNC_MAP["greedy_search"](self, *args, **kwargs)
+
+def sample_proxy(self, *args, **kwargs):
+    USE_LADE = int(os.environ.get("USE_LADE", 0))
+    CHAT = int(os.environ.get("CHAT", 0))
+    # There may be a more efficient way of extracting this
+    temperature = 0.0
+    for l in kwargs["logits_warper"]:
+        if isinstance(l, TemperatureLogitsWarper):
+            temperature = l.temperature
+            break
+    if CHAT and USE_LADE:
+        return jacobi_greedy_search_multilevel(self, chat=True, temperature=temperature, *args, **kwargs)
+    elif CHAT:
+        return greedy_search_chat(self, *args, **kwargs)
+    
+    if USE_LADE:
+        return jacobi_greedy_search_multilevel(self, chat=False, temperature=temperature, *args, **kwargs)
+    else:
+        return FUNC_MAP["sample"](self, *args, **kwargs)
+
 
 
 def jacobi_greedy_search_multilevel(
@@ -42,9 +63,11 @@ def jacobi_greedy_search_multilevel(
     
     chat: bool = False, 
     stop_token: Optional[str]= None,
-    temperature: int = 0.0,
+    temperature: Optional[float] = 0.0,
     **model_kwargs,
 ) -> Union[GreedySearchOutput, torch.LongTensor]:
+
+
     r"""
     Generates sequences of token ids for models with a language modeling head using **greedy decoding** and can be
     used for text-decoder, text-to-text, speech-to-text, and vision-to-text models.
@@ -164,6 +187,8 @@ def jacobi_greedy_search_multilevel(
         if return_dict_in_generate is not None
         else self.generation_config.return_dict_in_generate
     )
+
+    
 
     # init attention / hidden states / scores tuples
     scores = () if (return_dict_in_generate and output_scores) else None
@@ -557,10 +582,6 @@ def jacobi_greedy_search_multilevel(
         return input_ids
 
 
-
-
-
-
 def greedy_search_chat(
     self,
     input_ids: torch.LongTensor,
@@ -575,7 +596,6 @@ def greedy_search_chat(
     return_dict_in_generate: Optional[bool] = None,
     synced_gpus: bool = False,
     streamer: Optional["BaseStreamer"] = None,
-
     stop_token: Optional[str] = None,
     **model_kwargs,
 ) -> Union[GreedySearchOutput, torch.LongTensor]:
