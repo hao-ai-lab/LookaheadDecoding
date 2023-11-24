@@ -44,7 +44,11 @@ def sample_proxy(self, *args, **kwargs):
     else:
         return FUNC_MAP["sample"](self, *args, **kwargs)
 
-
+def gumbel(logits, tau):
+    gumbels = (
+        -torch.empty_like(logits, memory_format=torch.legacy_contiguous_format).exponential_().log()
+    )  # ~Gumbel(0,1)
+    return (logits + gumbels) / tau  # ~Gumbel(logits,tau)
 
 def jacobi_greedy_search_multilevel(
     self,
@@ -334,7 +338,7 @@ def jacobi_greedy_search_multilevel(
         if temperature == 0:
             next_tokens = torch.argmax(next_tokens_scores, dim=-1)
         else:
-            next_tokens = torch.argmax(torch.nn.functional.gumbel_softmax(next_tokens_scores, tau=temperature), dim=-1)
+            next_tokens = torch.argmax(gumbel(next_tokens_scores, tau=temperature), dim=-1)
         
         # finished sentences should have their next token be a padding token
         if eos_token_id is not None:
@@ -355,7 +359,7 @@ def jacobi_greedy_search_multilevel(
             if temperature == 0:
                 past_tokens[1] = torch.argmax(outputs.inp_logits, dim=-1)[0].tolist()
             else:
-                past_tokens[1] = torch.argmax(torch.nn.functional.gumbel_softmax(outputs.inp_logits, tau=temperature), dim=-1)[0].tolist()
+                past_tokens[1] = torch.argmax(gumbel(outputs.inp_logits, tau=temperature), dim=-1)[0].tolist()
             fill_level += 1
         elif past_tokens[LEVEL - 2] is None:
             for level in range(fill_level + 1):
@@ -363,7 +367,7 @@ def jacobi_greedy_search_multilevel(
             if temperature == 0:
                 past_tokens[fill_level + 1] = torch.argmax(outputs.inp_logits, dim=-1)[0].tolist()[1:]
             else:
-                past_tokens[fill_level + 1] = torch.argmax(torch.nn.functional.gumbel_softmax(outputs.inp_logits, tau=temperature), dim=-1)[0].tolist()[1:]
+                past_tokens[fill_level + 1] = torch.argmax(gumbel(outputs.inp_logits, tau=temperature), dim=-1)[0].tolist()[1:]
             
             fill_level += 1
         else:

@@ -47,7 +47,7 @@ print("Generated Tokens:", (greedy_output.numel() - model_inputs['input_ids'].nu
 
 print()
 
-print("Sampled Output:\n" + 100 * '-')
+print("Sampled Output [temperature = 0.8]:\n" + 100 * '-')
 print(tokenizer.decode(sampled_output[0], skip_special_tokens=False))
 print("Generated Tokens:", (sampled_output.numel() - model_inputs['input_ids'].numel()) ,"Generation Speed: ", (sampled_output.numel() - model_inputs['input_ids'].numel()) / (t1 - t0), " tokens/s")
 
