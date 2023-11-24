@@ -49,7 +49,7 @@ print()
 
 print("Sampled Output [temperature = 0.8]:\n" + 100 * '-')
 print(tokenizer.decode(sampled_output[0], skip_special_tokens=False))
-print("Generated Tokens:", (sampled_output.numel() - model_inputs['input_ids'].numel()) ,"Generation Speed: ", (sampled_output.numel() - model_inputs['input_ids'].numel()) / (t1 - t0), " tokens/s")
+print("Generated Tokens:", (sampled_output.numel() - model_inputs['input_ids'].numel()) ,"Generation Speed: ", (sampled_output.numel() - model_inputs['input_ids'].numel()) / (t3 - t2), " tokens/s")
 
 
 
