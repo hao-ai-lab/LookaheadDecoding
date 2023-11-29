@@ -319,7 +319,7 @@ def jacobi_greedy_search_multilevel(
 
 
         new_results = []
-        #print("fill levle: ", fill_level)
+        #print("fill level: ", fill_level)
         if past_tokens[1] is None:
             assert fill_level == 0
             past_tokens[0] = past_tokens[0][1:] 
