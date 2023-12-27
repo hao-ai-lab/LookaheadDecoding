@@ -6,6 +6,7 @@ import warnings
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Union
 from transformers.generation.utils import LogitsProcessorList, StoppingCriteriaList, GreedySearchOutput
+import torch.distributed as dist
 import os, time
 FUNC_MAP = {}
 CONFIG_MAP = {}
@@ -181,12 +182,17 @@ def jacobi_greedy_search_multilevel(
     unfinished_sequences = torch.ones(input_ids.shape[0], dtype=torch.long, device=input_ids.device)
 
     this_peer_finished = False  # used by synced_gpus only
-
+    ############### configurations 
     WINDOW_SIZE = CONFIG_MAP.get("WINDOW_SIZE", 60)
     GUESS_SET_SIZE = CONFIG_MAP.get("GUESS_SET_SIZE", 60)
     ALWAYS_FWD_ONE = CONFIG_MAP.get("ALWAYS_FWD_ONE", 1)
     LEVEL = CONFIG_MAP.get("LEVEL", 8)
     DEBUG = CONFIG_MAP.get("DEBUG", 0)
+    DIST_WORKERS = CONFIG_MAP.get("DIST_WORKERS", 1)
+    LOCAL_RANK = CONFIG_MAP.get("LOCAL_RANK", 0)
+    USE_FLASH = CONFIG_MAP.get("USE_FLASH", 0) #not use flash by default
+    USE_AWQ = False #not support AWQ
+    #IN FLASH ATTENTION WE REORDERED LOOKAHEAD WINDOW 
 
     GUESS_SIZE = LEVEL - 1
     NOT_SEQ = 0
@@ -233,16 +239,6 @@ def jacobi_greedy_search_multilevel(
                                    spaces_between_special_tokens=False, clean_up_tokenization_spaces=True,)
         prev = len(init)
     
-    USE_AWQ = False 
-    try:
-        from awq.modules.fused.cache import WindowedCache
-        window_cache = []
-        for param in self.modules():
-            if hasattr(param, "cache") and type(param.cache) is WindowedCache:
-                USE_AWQ = True
-                window_cache.append(param.cache)
-    except:
-        pass 
 
     #print("first input: ", init, flush=True)
     while True:
@@ -516,12 +512,13 @@ def jacobi_greedy_search_multilevel(
         all_old_tokens = all_old_tokens[:init_len + max_length]
         input_ids = input_ids[:][:init_len + max_length]
 
-    if DEBUG:
+    if DEBUG and LOCAL_RANK == 0:
         #print("===DEBUG INFO===", " generated tokens: ", len(all_old_tokens) - init_len, "total step: ", steps, len(token_map.keys()), sum(len(value) for value in token_map.values()), input_ids.numel(), reps)
 
         print("\n==========================ACCELERATION===SUMMARY======================================")
         print("Generated tokens: ", len(all_old_tokens) - init_len, "Total steps: ", steps, " Compression ratio: ", round((len(all_old_tokens) - init_len) / steps, 2))
         print("======================================================================================", end="")
+        CONFIG_MAP["log"].append([len(all_old_tokens) - init_len, steps, round((len(all_old_tokens) - init_len) / steps, 2)])
     
 
     if streamer is not None:
