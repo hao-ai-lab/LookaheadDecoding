@@ -3,6 +3,7 @@
 Usage:
 python3 gen_model_answer.py --model-path lmsys/fastchat-t5-3b-v1.0 --model-id fastchat-t5-3b-v1.0
 """
+#adapted from fastchat: https://github.com/lm-sys/FastChat/blob/main/fastchat/llm_judge/gen_model_answer.py
 import argparse
 import json
 import os
@@ -206,10 +207,8 @@ def get_model_answers(
 ):  
     devices = os.environ.get("CUDA_VISIBLE_DEVICES", "0").split(",")
     
-    print("configuration: ", use_flash, use_pp, use_tp_ds, devices)
-    #tokenizer = AutoTokenizer.from_pretrained(model_path)
-    #cfg = AutoConfig.from_pretrained(model_path)
-    #cfg._flash_attn_2_enabled= use_flash  
+    print("configuration: ", "flash attn: ", use_flash, " HF PP: ",  use_pp, " DS TP: ", use_tp_ds, " GPUS: ", devices)
+
     ds_local_rank = int(os.getenv('LOCAL_RANK', '0'))
     if use_pp:
         model, tokenizer = load_model(
