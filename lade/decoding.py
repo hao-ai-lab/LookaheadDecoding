@@ -6,6 +6,7 @@ import warnings
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Union
 from transformers.generation.utils import LogitsProcessorList, StoppingCriteriaList, GreedySearchOutput
+from transformers.generation.logits_process import TemperatureLogitsWarper
 import os, time
 FUNC_MAP = {}
 CONFIG_MAP = {}
@@ -24,6 +25,30 @@ def greedy_search_proxy(self, *args, **kwargs):
     else:
         return FUNC_MAP["greedy_search"](self, *args, **kwargs)
 
+def sample_proxy(self, *args, **kwargs):
+    USE_LADE = int(os.environ.get("USE_LADE", 0))
+    CHAT = int(os.environ.get("CHAT", 0))
+    # There may be a more efficient way of extracting this
+    temperature = 0.0
+    for l in kwargs["logits_warper"]:
+        if isinstance(l, TemperatureLogitsWarper):
+            temperature = l.temperature
+            break
+    if CHAT and USE_LADE:
+        return jacobi_greedy_search_multilevel(self, chat=True, temperature=temperature, *args, **kwargs)
+    elif CHAT:
+        return greedy_search_chat(self, *args, **kwargs)
+    
+    if USE_LADE:
+        return jacobi_greedy_search_multilevel(self, chat=False, temperature=temperature, *args, **kwargs)
+    else:
+        return FUNC_MAP["sample"](self, *args, **kwargs)
+
+def gumbel(logits, tau):
+    gumbels = (
+        -torch.empty_like(logits, memory_format=torch.legacy_contiguous_format).exponential_().log_()
+    )  # ~Gumbel(0,1)
+    return gumbels.div_(tau).add_(logits)  # ~Gumbel(logits,tau)
 
 def jacobi_greedy_search_multilevel(
     self,
@@ -42,8 +67,11 @@ def jacobi_greedy_search_multilevel(
     
     chat: bool = False, 
     stop_token: Optional[str]= None,
+    temperature: Optional[float] = 0.0,
     **model_kwargs,
 ) -> Union[GreedySearchOutput, torch.LongTensor]:
+
+
     r"""
     Generates sequences of token ids for models with a language modeling head using **greedy decoding** and can be
     used for text-decoder, text-to-text, speech-to-text, and vision-to-text models.
@@ -163,6 +191,8 @@ def jacobi_greedy_search_multilevel(
         if return_dict_in_generate is not None
         else self.generation_config.return_dict_in_generate
     )
+
+    
 
     # init attention / hidden states / scores tuples
     scores = () if (return_dict_in_generate and output_scores) else None
@@ -305,8 +335,12 @@ def jacobi_greedy_search_multilevel(
         #next_tokens_scores = logits_processor(input_ids, next_token_logits)
         next_tokens_scores = next_token_logits
         # argmax
-        next_tokens = torch.argmax(next_tokens_scores, dim=-1)
 
+        if temperature == 0:
+            next_tokens = torch.argmax(next_tokens_scores, dim=-1)
+        else:
+            next_tokens = torch.argmax(gumbel(next_tokens_scores, tau=temperature), dim=-1)
+        
         # finished sentences should have their next token be a padding token
         if eos_token_id is not None:
             if pad_token_id is None:
@@ -323,14 +357,22 @@ def jacobi_greedy_search_multilevel(
         if past_tokens[1] is None:
             assert fill_level == 0
             past_tokens[0] = past_tokens[0][1:] 
-            past_tokens[1] = torch.argmax(outputs.inp_logits, dim=-1)[0].tolist()
+
+            if temperature == 0:
+                past_tokens[1] = torch.argmax(outputs.inp_logits, dim=-1)[0].tolist()
+            else:
+                past_tokens[1] = torch.argmax(gumbel(outputs.inp_logits, tau=temperature), dim=-1)[0].tolist()
 
             fill_level += 1
         elif past_tokens[LEVEL - 2] is None:
             for level in range(fill_level + 1):
                 past_tokens[level] = past_tokens[level][1:] 
 
-            past_tokens[fill_level + 1] = torch.argmax(outputs.inp_logits, dim=-1)[0].tolist()[1:]
+            if temperature == 0:
+                past_tokens[fill_level + 1] = torch.argmax(outputs.inp_logits, dim=-1)[0].tolist()[1:]
+            else:
+                past_tokens[fill_level + 1] = torch.argmax(gumbel(outputs.inp_logits, tau=temperature), dim=-1)[0].tolist()[1:]
+
             
             fill_level += 1
         else:
@@ -549,10 +591,6 @@ def jacobi_greedy_search_multilevel(
         return input_ids
 
 
-
-
-
-
 def greedy_search_chat(
     self,
     input_ids: torch.LongTensor,
@@ -567,7 +605,6 @@ def greedy_search_chat(
     return_dict_in_generate: Optional[bool] = None,
     synced_gpus: bool = False,
     streamer: Optional["BaseStreamer"] = None,
-
     stop_token: Optional[str] = None,
     **model_kwargs,
 ) -> Union[GreedySearchOutput, torch.LongTensor]:
