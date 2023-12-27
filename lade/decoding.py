@@ -46,9 +46,9 @@ def sample_proxy(self, *args, **kwargs):
 
 def gumbel(logits, tau):
     gumbels = (
-        -torch.empty_like(logits, memory_format=torch.legacy_contiguous_format).exponential_().log()
+        -torch.empty_like(logits, memory_format=torch.legacy_contiguous_format).exponential_().log_()
     )  # ~Gumbel(0,1)
-    return (logits + gumbels) / tau  # ~Gumbel(logits,tau)
+    return gumbels.div_(tau).add_(logits)  # ~Gumbel(logits,tau)
 
 def jacobi_greedy_search_multilevel(
     self,
