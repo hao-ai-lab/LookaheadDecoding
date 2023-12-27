@@ -1,5 +1,6 @@
 import torch, math, time
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Union
+from transformers.cache_utils import Cache, DynamicCache
 from transformers.models.llama.modeling_llama import BaseModelOutputWithPast, CausalLMOutputWithPast, _expand_mask
 
 def j_make_causal_mask_multilevel(
@@ -168,9 +169,11 @@ def LlamaModeljforward(
     seq_length_with_past = seq_length
     past_key_values_length = 0
 
-    if past_key_values is not None:
-        past_key_values_length = past_key_values[0][0].shape[2]
-        seq_length_with_past = seq_length_with_past + past_key_values_length
+    if use_cache:
+        use_legacy_cache = not isinstance(past_key_values, Cache)
+        if use_legacy_cache:
+            past_key_values = DynamicCache.from_legacy_cache(past_key_values)
+        past_key_values_length = past_key_values.get_usable_length(seq_length)
 
     if position_ids is None:
         device = input_ids.device if input_ids is not None else inputs_embeds.device
@@ -217,29 +220,24 @@ def LlamaModeljforward(
         if output_hidden_states:
             all_hidden_states += (hidden_states,)
 
-        past_key_value = past_key_values[idx] if past_key_values is not None else None
-
         if self.gradient_checkpointing and self.training:
-
-            def create_custom_forward(module):
-                def custom_forward(*inputs):
-                    # None for past_key_value
-                    return module(*inputs, past_key_value, output_attentions, padding_mask=padding_mask)
-
-                return custom_forward
-
-            layer_outputs = torch.utils.checkpoint.checkpoint(
-                create_custom_forward(decoder_layer), hidden_states, attention_mask, position_ids
-            )
+                layer_outputs = self._gradient_checkpointing_func(
+                    decoder_layer.__call__,
+                    hidden_states,
+                    attention_mask,
+                    position_ids,
+                    past_key_values,
+                    output_attentions,
+                    use_cache,
+                )
         else:
             layer_outputs = decoder_layer.forward(
                 hidden_states,
                 attention_mask=attention_mask,
                 position_ids=position_ids,
-                past_key_value=past_key_value,
+                past_key_value=past_key_values,
                 output_attentions=output_attentions,
                 use_cache=use_cache,
-                padding_mask=padding_mask,
             )
 
         hidden_states = layer_outputs[0]
