@@ -214,9 +214,9 @@ def LlamaModeljforward(
     # decoder layers
     all_hidden_states = () if output_hidden_states else None
     all_self_attns = () if output_attentions else None
-    next_decoder_cache = () if use_cache else None
+    next_decoder_cache = None
 
-    for idx, decoder_layer in enumerate(self.layers):
+    for decoder_layer in self.layers:
         if output_hidden_states:
             all_hidden_states += (hidden_states,)
 
@@ -243,7 +243,7 @@ def LlamaModeljforward(
         hidden_states = layer_outputs[0]
 
         if use_cache:
-            next_decoder_cache += (layer_outputs[2 if output_attentions else 1],)
+            next_decoder_cache = layer_outputs[2 if output_attentions else 1]
 
         if output_attentions:
             all_self_attns += (layer_outputs[1],)
@@ -254,7 +254,9 @@ def LlamaModeljforward(
     if output_hidden_states:
         all_hidden_states += (hidden_states,)
 
-    next_cache = next_decoder_cache if use_cache else None
+    next_cache = None
+    if use_cache:
+        next_cache = next_decoder_cache.to_legacy_cache() if use_legacy_cache else next_decoder_cache
     if not return_dict:
         return tuple(v for v in [hidden_states, next_cache, all_hidden_states, all_self_attns] if v is not None)
     return BaseModelOutputWithPast(
