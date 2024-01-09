@@ -417,10 +417,10 @@ def jacobi_greedy_search_multilevel(
             past_key_values = []
             for idx, kv in enumerate(outputs.past_key_values):
                 for hh in range(max_hit):
-                    assert outputs.step_len == kv[0].size(2)
-                    kv[0][:,:,outputs.kvcache_len + hh,:] = kv[0][:,:,outputs.step_len-len(guess_tokens)+hit_point * GUESS_SIZE + hh,:]
-                    kv[1][:,:,outputs.kvcache_len + hh,:] = kv[1][:,:,outputs.step_len-len(guess_tokens)+hit_point * GUESS_SIZE + hh,:]
-                past_key_values.append( (kv[0][:,:,:outputs.kvcache_len + max_hit,:], kv[1][:,:,:outputs.kvcache_len + max_hit,:]) )
+                    assert outputs.step_len == kv[idx][0].size(2)
+                    kv[idx][0][:,:,outputs.kvcache_len + hh,:] = kv[idx][0][:,:,outputs.step_len-len(guess_tokens)+hit_point * GUESS_SIZE + hh,:]
+                    kv[idx][1][:,:,outputs.kvcache_len + hh,:] = kv[idx][1][:,:,outputs.step_len-len(guess_tokens)+hit_point * GUESS_SIZE + hh,:]
+                past_key_values.append( (kv[idx][0][:,:,:outputs.kvcache_len + max_hit,:], kv[idx][1][:,:,:outputs.kvcache_len + max_hit,:]) )
             outputs.past_key_values = past_key_values
 
         else:
@@ -435,8 +435,8 @@ def jacobi_greedy_search_multilevel(
             past_key_values = []
             for idx, kv in enumerate(outputs.past_key_values):
                 for hh in range(max_hit):
-                    assert outputs.step_len == kv[0].size(2)
-                past_key_values.append( (kv[0][:,:,:outputs.kvcache_len + max_hit,:], kv[1][:,:,:outputs.kvcache_len + max_hit,:]) )
+                    assert outputs.step_len == kv[idx][0].size(2)
+                past_key_values.append( (kv[idx][0][:,:,:outputs.kvcache_len + max_hit,:], kv[idx][1][:,:,:outputs.kvcache_len + max_hit,:]) )
             outputs.past_key_values = past_key_values
 
 
