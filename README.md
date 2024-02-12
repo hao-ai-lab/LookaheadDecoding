@@ -1,7 +1,7 @@
 <div align="center"><h1>&nbsp;Break the Sequential Dependency of LLM Inference Using Lookahead Decoding</h1></div>
 
 <p align="center">
-| <a href="https://lmsys.org/blog/2023-11-21-lookahead-decoding/"><b>Blog</b></a> | <a href="https://github.com/hao-ai-lab/LookaheadDecoding/issues/13"><b>Roadmap</b></a> | 
+| <a href="https://arxiv.org/abs/2402.02057"><b>Paper</b></a> | <a href="https://lmsys.org/blog/2023-11-21-lookahead-decoding/"><b>Blog</b></a> | <a href="https://github.com/hao-ai-lab/LookaheadDecoding/issues/13"><b>Roadmap</b></a> | 
 </p>
 
 ## Introduction 
@@ -158,12 +158,13 @@ greedy_output = model.generate(**model_inputs, max_new_tokens=1024) #speedup obt
 
 ## Citation
 ```bibtex
-@misc{fu2023lookahead,
-    title = {Breaking the Sequential Dependency of LLM Inference Using Lookahead Decoding},
-    url = {https://lmsys.org/blog/2023-11-21-lookahead-decoding/},
-    author = {Yichao Fu and Peter Bailis and Ion Stoica and Hao Zhang},
-    month = {November},
-    year = {2023}
+@misc{fu2024break,
+      title={Break the Sequential Dependency of LLM Inference Using Lookahead Decoding}, 
+      author={Yichao Fu and Peter Bailis and Ion Stoica and Hao Zhang},
+      year={2024},
+      eprint={2402.02057},
+      archivePrefix={arXiv},
+      primaryClass={cs.LG}
 }
 ```
 ## Guidance
