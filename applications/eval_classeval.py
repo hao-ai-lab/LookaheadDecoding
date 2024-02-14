@@ -19,6 +19,7 @@ from fastchat.model import get_conversation_template
 from fastchat.utils import str_to_torch_dtype
 import time
 import lade
+from datasets import load_dataset
 
 def run_eval(
     model_path,
@@ -42,7 +43,9 @@ def run_eval(
     use_flash,
     do_sample
 ):
-    questions = load_questions(question_file, question_begin, question_end)
+    #questions = load_questions(question_file, question_begin, question_end)
+    ClassEval = load_dataset("FudanSELab/ClassEval")
+    questions = ClassEval["test"]
     # random shuffle the questions to balance the loading
     ###not shuffle
     #random.shuffle(questions)
@@ -60,6 +63,7 @@ def run_eval(
                 model_path,
                 model_id,
                 questions[i : i + chunk_size],
+                question_end,
                 answer_file,
                 max_new_token,
                 num_choices,
@@ -196,6 +200,7 @@ def get_model_answers(
     model_path,
     model_id,
     questions,
+    question_end,
     answer_file,
     max_new_token,
     num_choices,
@@ -214,7 +219,9 @@ def get_model_answers(
     devices = os.environ.get("CUDA_VISIBLE_DEVICES", "0").split(",")
     
     print("configuration: ", "flash attn: ", use_flash, " HF PP: ",  use_pp, " DS TP: ", use_tp_ds, " GPUS: ", devices)
-
+    #tokenizer = AutoTokenizer.from_pretrained(model_path)
+    #cfg = AutoConfig.from_pretrained(model_path)
+    #cfg._flash_attn_2_enabled= use_flash  
     ds_local_rank = int(os.getenv('LOCAL_RANK', '0'))
     if use_pp:
         model, tokenizer = load_model(
@@ -269,12 +276,7 @@ def get_model_answers(
     overall_gen = 0
     count_gen = 0
     stats = {}
-    for question_idx, question in enumerate(tqdm(questions)):
-        if question["category"] in temperature_config:
-            temperature = temperature_config[question["category"]]
-        else:
-            temperature = 0.7
-
+    for question_idx, description in enumerate(tqdm(questions["class_description"][:question_end])):
         if not do_sample:
             temperature = 0.0 #force greedy
         
@@ -286,13 +288,22 @@ def get_model_answers(
             turns = []
             prompts = []
 
-            for j in range(len(question["turns"])):
-                qs = question["turns"][j]
-                conv.append_message(conv.roles[0], qs)
-                conv.append_message(conv.roles[1], None)
-                prompt = conv.get_prompt()
-                prompts.append(prompt)
-                input_ids = tokenizer([prompt]).input_ids
+            for j in range(1):
+                qs = ""
+
+                import_stat = '\n'.join(questions["import_statement"][question_idx])
+                qs += import_stat
+
+                class_init = questions["class_constructor"][question_idx]
+                class_init_list = class_init.split('\n')
+                class_init_list[0] += " \n" + description
+                class_init = '\n'.join(class_init_list)
+
+                qs = qs + "\n" +  class_init
+                prompt = qs
+
+                input_ids = tokenizer(prompt, return_tensors="pt",
+                          max_length=1024, truncation=True).input_ids.to("cuda")
 
                 if temperature < 1e-4:
                     do_sample = False
@@ -304,15 +315,14 @@ def get_model_answers(
                 if True:
                     start_time = time.time()
                     output_ids = model.generate(
-                        torch.as_tensor(input_ids).cuda(),
+                        input_ids,
                         do_sample=do_sample,
                         temperature=temperature,
                         max_new_tokens=max_new_token,
-                        top_k=0.0, top_p=1.0,
                     )
                     end_time = time.time()
                     gap_time = end_time - start_time 
-                    tokens = output_ids.numel() - len(input_ids[0])
+                    tokens = output_ids.numel() - input_ids.numel()
                     overall_time += gap_time
                     overall_gen += tokens
                     overall_tp += tokens / gap_time
@@ -322,44 +332,13 @@ def get_model_answers(
                     if lade.get_device() == 0 and ds_local_rank == 0:
                         print([f"step {i} turn {j} time: ", gap_time, " generated tokens: ", tokens, " throughput: " , tokens / gap_time])
                     
-                    if model.config.is_encoder_decoder:
-                        output_ids = output_ids[0]
-                    else:
-                        output_ids = output_ids[0][len(input_ids[0]) :]
-
-                    # be consistent with the template's stop_token_ids
-                    if conv.stop_token_ids:
-                        stop_token_ids_index = [
-                            i
-                            for i, id in enumerate(output_ids)
-                            if id in conv.stop_token_ids
-                        ]
-                        if len(stop_token_ids_index) > 0:
-                            output_ids = output_ids[: stop_token_ids_index[0]]
-
                     output = tokenizer.decode(
-                        output_ids,
-                        spaces_between_special_tokens=False,
+                        output_ids[0].tolist(),
+                        skip_special_tokens=False,
                     )
-                    if conv.stop_str and output.find(conv.stop_str) > 0:
-                        output = output[: output.find(conv.stop_str)]
-                    for special_token in tokenizer.special_tokens_map.values():
-                        if isinstance(special_token, list):
-                            for special_tok in special_token:
-                                output = output.replace(special_tok, "")
-                        else:
-                            output = output.replace(special_token, "")
-                    output = output.strip()
 
-                    if conv.name == "xgen" and output.startswith("Assistant:"):
-                        output = output.replace("Assistant:", "", 1).strip()
-                '''
-                except RuntimeError as e:
-                    print("ERROR question ID: ", question["question_id"])
-                    output = "ERROR"
-                '''
                 turns.append(output)
-                conv.messages[-1][-1] = output
+                prompts.append(prompt)
 
             choices.append({"index": i, "turns": turns, "prompts" : prompts})
 
@@ -368,7 +347,7 @@ def get_model_answers(
             os.makedirs(os.path.dirname(answer_file), exist_ok=True)
             with open(os.path.expanduser(answer_file), "a") as fout:
                 ans_json = {
-                    "question_id": question["question_id"],
+                    "question_id": question_idx,
                     "answer_id": shortuuid.uuid(),
                     "model_id": model_id,
                     "choices": choices,
@@ -423,7 +402,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--bench-name",
         type=str,
-        default="mt_bench",
+        default="classeval",
         help="The name of the benchmark question set.",
     )
     parser.add_argument(
@@ -441,7 +420,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--max-new-token",
         type=int,
-        default=1024,
+        default=2048,
         help="The maximum number of new generated tokens.",
     )
     parser.add_argument(

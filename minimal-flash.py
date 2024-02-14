@@ -6,7 +6,7 @@ if int(os.environ.get("LOAD_LADE", 0)):
     import lade 
     lade.augment_all()
     #For a 7B model, set LEVEL=5, WINDOW_SIZE=7, GUESS_SET_SIZE=7 
-    lade.config_lade(LEVEL=7, WINDOW_SIZE=20, GUESS_SET_SIZE=20, DEBUG=1, POOL_FROM_PROMPT=True)
+    lade.config_lade(LEVEL=7, WINDOW_SIZE=20, GUESS_SET_SIZE=20, DEBUG=1, USE_FLASH=True, POOL_FROM_PROMPT=True)
 
 assert torch.cuda.is_available()
 
@@ -16,7 +16,7 @@ model_name = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
 
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 
-model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype=torch.float16, device_map=torch_device)
+model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype=torch.float16, device_map=torch_device, attn_implementation="flash_attention_2")
 model.tokenizer = tokenizer
 prompt = "How do you fine tune a large language model?"
 input_text = (

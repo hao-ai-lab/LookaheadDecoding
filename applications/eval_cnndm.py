@@ -19,6 +19,7 @@ from fastchat.model import get_conversation_template
 from fastchat.utils import str_to_torch_dtype
 import time
 import lade
+from datasets import load_dataset
 
 def run_eval(
     model_path,
@@ -42,7 +43,7 @@ def run_eval(
     use_flash,
     do_sample
 ):
-    questions = load_questions(question_file, question_begin, question_end)
+    questions = load_dataset("cnn_dailymail", "3.0.0", split="validation", streaming=False)["article"][question_begin:question_end]
     # random shuffle the questions to balance the loading
     ###not shuffle
     #random.shuffle(questions)
@@ -270,13 +271,6 @@ def get_model_answers(
     count_gen = 0
     stats = {}
     for question_idx, question in enumerate(tqdm(questions)):
-        if question["category"] in temperature_config:
-            temperature = temperature_config[question["category"]]
-        else:
-            temperature = 0.7
-
-        if not do_sample:
-            temperature = 0.0 #force greedy
         
         stats[question_idx] = {} #
         choices = []
@@ -286,31 +280,45 @@ def get_model_answers(
             turns = []
             prompts = []
 
-            for j in range(len(question["turns"])):
-                qs = question["turns"][j]
-                conv.append_message(conv.roles[0], qs)
-                conv.append_message(conv.roles[1], None)
-                prompt = conv.get_prompt()
+            for j in range(1):
+
+                prompt = f'''[INST] <<SYS>>
+You are an intelligent chatbot. Answer the questions only using the following context:
+
+{question}
+
+Here are some rules you always follow:
+
+- Generate human readable output, avoid creating output with gibberish text.
+- Generate only the requested output, don't include any other language before or after the requested output.
+- Never say thank you, that you are happy to help, that you are an AI agent, etc. Just answer directly.
+- Generate professional language typically used in business documents in North America.
+- Never generate offensive or foul language.
+
+<</SYS>>
+
+Briefly summarize the given context. [/INST]
+Summary: '''
+
                 prompts.append(prompt)
+
                 input_ids = tokenizer([prompt]).input_ids
 
-                if temperature < 1e-4:
-                    do_sample = False
-                else:
-                    do_sample = True
-
+                #print("len: ", len(input_ids[0]))
+                if len(input_ids[0]) > 2048: #skip input len > 2048 tokens
+                    continue
                 
                 # some models may error out when generating long outputs
                 if True:
-                    start_time = time.time()
-                    output_ids = model.generate(
-                        torch.as_tensor(input_ids).cuda(),
-                        do_sample=do_sample,
-                        temperature=temperature,
-                        max_new_tokens=max_new_token,
-                        top_k=0.0, top_p=1.0,
-                    )
-                    end_time = time.time()
+                    if do_sample:
+                        start_time = time.time()
+                        output_ids = model.generate(torch.as_tensor(input_ids).cuda(), max_new_tokens=max_new_token, do_sample=True, top_k=0, temperature=1.0, top_p=1.0)
+                        end_time = time.time()
+                    else:
+                        start_time = time.time()
+                        output_ids = model.generate(torch.as_tensor(input_ids).cuda(), max_new_tokens=max_new_token, do_sample=False, top_k=0)
+                        end_time = time.time()
+
                     gap_time = end_time - start_time 
                     tokens = output_ids.numel() - len(input_ids[0])
                     overall_time += gap_time
@@ -353,13 +361,15 @@ def get_model_answers(
 
                     if conv.name == "xgen" and output.startswith("Assistant:"):
                         output = output.replace("Assistant:", "", 1).strip()
+
+                    #print("output: ", output)
                 '''
                 except RuntimeError as e:
                     print("ERROR question ID: ", question["question_id"])
                     output = "ERROR"
                 '''
                 turns.append(output)
-                conv.messages[-1][-1] = output
+                
 
             choices.append({"index": i, "turns": turns, "prompts" : prompts})
 
@@ -368,7 +378,7 @@ def get_model_answers(
             os.makedirs(os.path.dirname(answer_file), exist_ok=True)
             with open(os.path.expanduser(answer_file), "a") as fout:
                 ans_json = {
-                    "question_id": question["question_id"],
+                    "question_id": question_idx,
                     "answer_id": shortuuid.uuid(),
                     "model_id": model_id,
                     "choices": choices,
@@ -423,7 +433,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--bench-name",
         type=str,
-        default="mt_bench",
+        default="cnndm",
         help="The name of the benchmark question set.",
     )
     parser.add_argument(
@@ -520,7 +530,7 @@ if __name__ == "__main__":
         "--do-sample",
         type=int,
         default=0,
-    )
+    )  
 
     args = parser.parse_args()
     if int(os.environ.get("USE_LADE", 0)):
