@@ -3,3 +3,5 @@ accelerate==0.23.0
 fschat==0.2.31
 openai
 anthropic
+einops==0.7.0
+torch<2.1.1 #torch 2.1.1 uses sdpa, which is not supported yet

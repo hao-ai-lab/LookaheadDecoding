@@ -374,7 +374,7 @@ def jacobi_sample_multilevel(
 
     for warper in logits_warper:
         #assert type(warper) == TemperatureLogitsWarper or type(warper) == TopPLogitsWarper or type(warper) == TopKLogitsWarper,  f"please set top_k=0 {warper}"
-        assert type(warper) == TemperatureLogitsWarper,  f"please set top_k=0.0 and top_p=1.0 {warper}"
+        assert type(warper) == TemperatureLogitsWarper or type(warper) == TopKLogitsWarper or type(warper) == TopPLogitsWarper,  f"please set top_k=0.0 and top_p=1.0 {warper}"
 
     # auto-regressive generation
     while True:
@@ -485,9 +485,8 @@ def jacobi_sample_multilevel(
                 probs_next = torch.nn.functional.softmax(next_token_scores, dim=-1)[0]
                 hits = []
                 #= original model output
-                #print("size: ", input_ids.size(), outputs.guess_logits.size())
-                guess_logits = logits_warper(input_ids, outputs.guess_logits)
-                guess_probs = torch.nn.functional.softmax(guess_logits, dim=-1)[0] #
+                guess_logits = logits_warper(input_ids, outputs.guess_logits[0])
+                guess_probs = torch.nn.functional.softmax(guess_logits, dim=-1) #
                 #guess_results = torch.argmax(outputs.guess_logits, dim=-1)[0].tolist()
                 guess_indices = list(range(outputs.guess_logits.size(1) // GUESS_SIZE))
                 #algorithm modified from specinfer
@@ -887,7 +886,7 @@ def jacobi_greedy_search_multilevel(
 
     def copy_from():
         return random.choice(all_old_tokens)
-    
+
     def order_copy_from():
         if order_copy_from_idx[0] >= len(all_old_tokens):
             order_copy_from_idx[0] = 0
@@ -915,12 +914,12 @@ def jacobi_greedy_search_multilevel(
 
     if POOL_FROM_PROMPT:
         fill_pool_with_prompt(all_old_tokens, token_map, LEVEL, GUESS_SET_SIZE)
-
+        
     if chat:
         init = self.tokenizer.decode(all_old_tokens, skip_special_tokens=True, \
                                    spaces_between_special_tokens=False, clean_up_tokenization_spaces=True,)
         prev = len(init)
-    
+
     while True:
         if synced_gpus:
             # Under synced_gpus the `forward` call must continue until all gpus complete their sequence.
@@ -964,7 +963,7 @@ def jacobi_greedy_search_multilevel(
                     guess_tokens = None
         else:
             guess_tokens = None
-        
+
         assert return_dict_in_generate == False
         assert len(logits_processor) == 0
         # forward pass to get next token        
@@ -985,7 +984,7 @@ def jacobi_greedy_search_multilevel(
                 past_tokens_inp.append(tokens[window_start: window_end] if tokens is not None else None)
         else:
             past_tokens_inp = past_tokens
-
+            
         outputs = self.jforward_multilevel(
             **model_inputs,
             past_tokens=past_tokens_inp,
@@ -1040,7 +1039,7 @@ def jacobi_greedy_search_multilevel(
             assert fill_level == 0
             past_tokens[0] = past_tokens[0][1:] 
             past_tokens[1] = torch.argmax(outputs.inp_logits, dim=-1)[0].tolist()
-
+            
             if DIST_WORKERS > 1:
                 nn_past_tokens = [copy.deepcopy(past_tokens[1])]
                 torch.distributed.broadcast_object_list(nn_past_tokens, src=DIST_WORKERS - 1)
@@ -1051,7 +1050,7 @@ def jacobi_greedy_search_multilevel(
             for level in range(fill_level + 1):
                 past_tokens[level] = past_tokens[level][1:] 
             current_past_tokens = torch.argmax(outputs.inp_logits, dim=-1)[0].tolist()
-
+            
             
             if DIST_WORKERS > 1:
                 nn_past_tokens = [None] * DIST_WORKERS
@@ -1063,9 +1062,9 @@ def jacobi_greedy_search_multilevel(
             past_tokens[fill_level + 1] = current_past_tokens[1:]
             #print("new past: ", (LOCAL_RANK, past_tokens))
 
-            
+
             fill_level += 1
-        else:
+        else: 
             #time.sleep(10000)
             #multi-level window is filled
             #match guess tokens 
@@ -1101,7 +1100,7 @@ def jacobi_greedy_search_multilevel(
             #    print("rank: ",hits, max_hit)
             #sync new_results
             new_results = torch.argmax(outputs.inp_logits, dim=-1)[0].tolist()
-            
+
             if DIST_WORKERS > 1:
                 nn_past_tokens = [None] * DIST_WORKERS
                 torch.distributed.all_gather_object(nn_past_tokens, new_results)
@@ -1149,7 +1148,7 @@ def jacobi_greedy_search_multilevel(
         if DIST_WORKERS > 1 and max_hit > 0:
 
             guess_skip_dist = max_hit
-        for idx, kv in enumerate(outputs.past_key_values):
+            for idx, kv in enumerate(outputs.past_key_values):
                 past_key_values.append( (kv[0][:,:,:outputs.kvcache_len,:], kv[1][:,:,:outputs.kvcache_len,:]) )
             outputs.past_key_values = past_key_values
         else:
@@ -1160,8 +1159,8 @@ def jacobi_greedy_search_multilevel(
                 if max_hit > 0:
                     kv[0][:,:,outputs.kvcache_len:outputs.kvcache_len+max_hit,:] = kv[0][:,:,offset_kv_cache:offset_kv_cache+max_hit,:]
                     kv[1][:,:,outputs.kvcache_len:outputs.kvcache_len+max_hit,:] = kv[1][:,:,offset_kv_cache:offset_kv_cache+max_hit,:]
-            past_key_values.append( (kv[0][:,:,:outputs.kvcache_len + max_hit,:], kv[1][:,:,:outputs.kvcache_len + max_hit,:]) )
-        outputs.past_key_values = past_key_values
+                past_key_values.append( (kv[0][:,:,:outputs.kvcache_len + max_hit,:], kv[1][:,:,:outputs.kvcache_len + max_hit,:]) )
+            outputs.past_key_values = past_key_values
 
         lst_token = hits[max_hit]
 
@@ -1176,7 +1175,7 @@ def jacobi_greedy_search_multilevel(
                 all_old_tokens.append(hits[max_hit])
                 if POOL_FROM_PROMPT:
                     append_new_generated_pool(all_old_tokens[-LEVEL:], token_map, LEVEL, GUESS_SET_SIZE)
-        
+
 
         if chat and LOCAL_RANK == 0:
             all_str = self.tokenizer.decode(all_old_tokens, skip_special_tokens=True, \
@@ -1188,7 +1187,7 @@ def jacobi_greedy_search_multilevel(
                                     spaces_between_special_tokens=False, clean_up_tokenization_spaces=True,) 
                     pt = colored(not_hit[prev:],"blue") +  colored(all_str[len(not_hit):], "blue")
                 else:
-                    pt = all_str[prev:]                    
+                    pt = all_str[prev:]                
                 print(pt,  flush=True, end="")
             else:
                 print(all_str[prev:],  flush=True, end="")
@@ -1440,7 +1439,7 @@ def greedy_search_chat(
 
         # prepare model inputs
         model_inputs = self.prepare_inputs_for_generation(input_ids, **model_kwargs)
-
+        
         # forward pass to get next token
         outputs = self(
             **model_inputs,
