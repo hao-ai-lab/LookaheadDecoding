@@ -207,13 +207,11 @@ We will integrate FlashAttention directly into this repo for simple installation
 
 ## Citation
 ```bibtex
-@misc{fu2024break,
-      title={Break the Sequential Dependency of LLM Inference Using Lookahead Decoding}, 
-      author={Yichao Fu and Peter Bailis and Ion Stoica and Hao Zhang},
-      year={2024},
-      eprint={2402.02057},
-      archivePrefix={arXiv},
-      primaryClass={cs.LG}
+@article{fu2024break,
+  title={Break the sequential dependency of llm inference using lookahead decoding},
+  author={Fu, Yichao and Bailis, Peter and Stoica, Ion and Zhang, Hao},
+  journal={arXiv preprint arXiv:2402.02057},
+  year={2024}
 }
 ```
 ## Guidance
