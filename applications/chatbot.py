@@ -79,14 +79,14 @@ if __name__ == "__main__":
             tmp_greedy_output = model.generate(input_ids=input_ids, **tmp_kwargs).tolist() #warmup
             lade.config_lade(DEBUG=1)
 
-        os.environ["CHAT"] = "1"
+        os.environ["CHAT"] = "0"
         t0 = time.time()
         greedy_output = model.generate(input_ids=input_ids, **generate_kwargs).tolist()
         
         t1 = time.time()
         os.environ["CHAT"] = "0"
         output = tokenizer.decode(greedy_output[0], skip_special_tokens=False)
-
+        print(output)
         user_input = f"{output}\n\n"
         
         if args.debug:
