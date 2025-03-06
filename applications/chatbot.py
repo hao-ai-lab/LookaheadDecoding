@@ -6,11 +6,9 @@ from lade.utils import get_model
 import time, os
 
 if __name__ == "__main__":
-    lade.augment_all()
-    #lade.config_lade(LEVEL=8, WINDOW_SIZE=80, GUESS_SET_SIZE=80, DEBUG=1)
-
-    lade.config_lade(LEVEL=5, WINDOW_SIZE=15, GUESS_SET_SIZE=15, DEBUG=1) #A100
-    #lade.config_lade(LEVEL=5, WINDOW_SIZE=10, GUESS_SET_SIZE=10, DEBUG=1) #Game GPU like 3090
+    if int(os.environ.get("USE_LADE", 0)):
+        lade.augment_all()
+        lade.config_lade(LEVEL=5, WINDOW_SIZE=15, GUESS_SET_SIZE=15, DEBUG=1) #A100
     
     parser = argparse.ArgumentParser()
     parser.add_argument("--local_rank", type=int, default=0) 
