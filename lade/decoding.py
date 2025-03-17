@@ -1031,7 +1031,7 @@ def jacobi_greedy_search_multilevel(
         
         first_guess = next_tokens.item()
         max_hit = 0 
-        hits = [first_guess] + [0] * (GUESS_SIZE - 1)
+        hits = [first_guess] + [0] * GUESS_SIZE
 
         new_results = []
 
@@ -1075,8 +1075,9 @@ def jacobi_greedy_search_multilevel(
                     correct = [first_guess] + guess_results[egx:egx + GUESS_SIZE]
                     myguess = guess_tokens[egx:egx + GUESS_SIZE]
                     gg = 0
-                    for gg in range(len(myguess)):
-                        if myguess[gg] != correct[gg]:
+                    # if all tokens in myguess equal to correct, gg should be len(myguess)
+                    for gg in range(len(myguess) + 1):
+                        if gg >= len(myguess) or myguess[gg] != correct[gg]:
                             break 
                     if gg > max_hit:
                         max_hit = gg 
