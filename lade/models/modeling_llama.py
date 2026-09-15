@@ -499,23 +499,31 @@ class LlamaAttention(nn.Module):
 
         kv_seq_len = key_states.shape[-2]
         if past_key_value is not None:
-            kv_seq_len += past_key_value[0].shape[-2]
             if self.layer_idx is None:
                 raise ValueError(
                     f"The cache structure has changed since version v4.36. If you are using {self.__class__.__name__} "
                     "for auto-regressive decoding with k/v caching, please make sure to initialize the attention class "
                     "with a layer index."
                 )
+            if isinstance(past_key_value, Cache):
+                kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
+            else:
+                kv_seq_len += past_key_value[0].shape[-2]
 
         cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
         query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
 
-        if past_key_value is not None:
+        if isinstance(past_key_value, Cache):
+            key_states, value_states = past_key_value.update(
+                key_states, value_states, self.layer_idx, {"sin": sin, "cos": cos}
+            )
+        elif past_key_value is not None:
             # reuse k, v, self_attention
             key_states = torch.cat([past_key_value[0], key_states], dim=2)
             value_states = torch.cat([past_key_value[1], value_states], dim=2)
 
-        past_key_value = (key_states, value_states) if use_cache else None
+        if not isinstance(past_key_value, Cache):
+            past_key_value = (key_states, value_states) if use_cache else None
 
         key_states = repeat_kv(key_states, self.num_key_value_groups)
         value_states = repeat_kv(value_states, self.num_key_value_groups)
@@ -737,7 +745,11 @@ class LlamaSdpaAttention(LlamaAttention):
                 "LlamaModel is using LlamaSdpaAttention, but `torch.nn.functional.scaled_dot_product_attention` does not support `output_attentions=True`. Falling back to the manual attention implementation, "
                 'but specifying the manual implementation will be required from Transformers version v5.0.0 onwards. This warning can be removed using the argument `attn_implementation="eager"` when loading the model.'
             )
-            return super().forward(
+        # Lookahead uses legacy tuple caches; ordinary HF SDPA uses Cache.
+        # Explicit dispatch also works when this method is injected into HF.
+        if output_attentions or (use_cache and not isinstance(past_key_value, Cache)):
+            return LlamaAttention.forward(
+                self,
                 hidden_states=hidden_states,
                 attention_mask=attention_mask,
                 position_ids=position_ids,
@@ -850,15 +862,16 @@ class LlamaDecoderLayer(nn.Module):
                 "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`"
             )
 
+        flash_enabled = self.self_attn.config._attn_implementation == "flash_attention_2"
         if use_flash:
-            assert isinstance(self.self_attn, LlamaFlashAttention2)
+            assert flash_enabled
         
         residual = hidden_states
 
         hidden_states = self.input_layernorm(hidden_states)
         # Self Attention
         #attn = self.self_attn 
-        if not use_flash and not self._flash_attn_2_enabled:
+        if not use_flash and not flash_enabled:
             hidden_states, self_attn_weights, present_key_value = self.self_attn.forward(
                 hidden_states=hidden_states,
                 attention_mask=attention_mask,
@@ -866,7 +879,6 @@ class LlamaDecoderLayer(nn.Module):
                 past_key_value=past_key_value,
                 output_attentions=output_attentions,
                 use_cache=use_cache,
-                lookahead=None,
             )
         else:
             hidden_states, self_attn_weights, present_key_value = self.self_attn.forward_flash(
@@ -1645,5 +1657,3 @@ class LlamaForCausalLM(LlamaPreTrainedModel):
                 tuple(past_state.index_select(0, beam_idx.to(past_state.device)) for past_state in layer_past),
             )
         return reordered_past
-
-

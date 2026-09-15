@@ -44,12 +44,15 @@ def inject_module(lade_module, original_module):
     for name, cls in inspect.getmembers(lade_module, inspect.isclass):
         if str(cls.__module__).startswith("lade") and name in s:
             tc = s[name]
-            for method_name in dir(cls):
-                if callable(getattr(cls, method_name)):
-                    try:
-                        setattr(tc, method_name, getattr(cls, method_name))
-                    except:
-                        pass 
+            # Inherited methods include nn.Module.forward and GenerationMixin
+            # helpers. Copying them shadows the original model implementation
+            # and generation proxies. Constructors also use zero-argument
+            # super(), which cannot be transplanted to an unrelated class.
+            for method_name, method in vars(cls).items():
+                if method_name == "__init__":
+                    continue
+                if inspect.isfunction(method) or isinstance(method, (staticmethod, classmethod)):
+                    setattr(tc, method_name, method)
 
 
 def augment_llama():
@@ -60,8 +63,10 @@ def augment_llama():
     #modeling_llama.LlamaModel.j_prepare_decoder_attention_mask = lookahead_llama.j_prepare_decoder_attention_mask    
 
 def augment_generate():
-    FUNC_MAP["greedy_search"] = GenerationMixin.greedy_search
-    FUNC_MAP["sample"] = GenerationMixin.sample
+    if GenerationMixin.greedy_search is not greedy_search_proxy:
+        FUNC_MAP["greedy_search"] = GenerationMixin.greedy_search
+    if GenerationMixin.sample is not sample_proxy:
+        FUNC_MAP["sample"] = GenerationMixin.sample
     GenerationMixin.greedy_search = greedy_search_proxy
     GenerationMixin.sample = sample_proxy
     #FUNC_MAP["sample"] = GenerationMixin.sample
