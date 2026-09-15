@@ -6,6 +6,7 @@ import warnings
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Union
 from transformers.generation.utils import LogitsProcessorList, StoppingCriteriaList, GreedySearchOutput, SampleOutput, TemperatureLogitsWarper, TopPLogitsWarper, TopKLogitsWarper
+from transformers.generation.stopping_criteria import validate_stopping_criteria
 import torch.distributed as dist
 import os, time, random
 FUNC_MAP = {}
@@ -31,7 +32,7 @@ def sample_proxy(self, *args, **kwargs):
     if USE_LADE:
         return jacobi_sample_multilevel(self, chat=int(os.environ.get("CHAT", 0)), *args, **kwargs)
     else:
-        return FUNC_MAP["greedy_search"](self, *args, **kwargs)
+        return FUNC_MAP["sample"](self, *args, **kwargs)
 
 
 def update_token_map(token_map, lst_token, past_tokens, new_results, LEVEL, WINDOW_SIZE, GUESS_SET_SIZE):
@@ -133,6 +134,18 @@ def filter_window(level_window, eos_token_id, reset_func):
     for idx in range(len(level_window)):
         if level_window[idx] == eos_token_id:
             level_window[idx] = reset_func()
+
+
+def _accepted_prefix(input_ids, hits, eos_token_ids, stopping_criteria, scores):
+    """Apply token-level stopping before a speculative block becomes visible."""
+    tokens = input_ids.new_tensor(hits).unsqueeze(0)
+    candidate = torch.cat((input_ids, tokens), dim=-1)
+    prompt_length = input_ids.shape[-1]
+    for index, token in enumerate(hits):
+        stopped = stopping_criteria(candidate[:, :prompt_length + index + 1], scores)
+        if (eos_token_ids is not None and token in eos_token_ids) or stopped:
+            return tokens[:, :index + 1], True
+    return tokens, False
 
 def jacobi_sample_multilevel(
     self,
@@ -579,6 +592,13 @@ def jacobi_sample_multilevel(
                 #filter <EOS> (we find too many <EOS> in window lead to numerical error)
                 filter_window(past_tokens[LEVEL - 2], eos_token_id[0], set_token)
 
+        accepted_tokens, block_stopped = _accepted_prefix(
+            input_ids, hits[:max_hit + 1], eos_token_id, stopping_criteria, scores
+        )
+        hits = hits[:accepted_tokens.shape[-1]]
+        max_hit = len(hits) - 1
+        model_kwargs["attention_mask"] = model_kwargs["attention_mask"][:, :input_ids.shape[-1] + max_hit]
+
         #update kv cache of correctly speculated tokens
         past_key_values = []
         for idx, kv in enumerate(outputs.past_key_values):
@@ -589,18 +609,12 @@ def jacobi_sample_multilevel(
             past_key_values.append( (kv[0][:,:,:outputs.kvcache_len + max_hit,:], kv[1][:,:,:outputs.kvcache_len + max_hit,:]) )
         outputs.past_key_values = past_key_values
 
-        lst_token = hits[max_hit]
-
-        for hit_ids in range(max_hit + 1):
-            if eos_token_id is not None and hits[hit_ids] == eos_token_id[0]:
-                all_old_tokens.append(hits[hit_ids])
-                next_tokens = eos_token_id_tensor
-                max_hit = hit_ids
-                break
-            else:
-                all_old_tokens.append(hits[hit_ids])
-                if POOL_FROM_PROMPT:
-                    append_new_generated_pool(all_old_tokens[-LEVEL:], token_map, LEVEL, GUESS_SET_SIZE)
+        lst_token = hits[-1]
+        next_tokens = accepted_tokens[:, -1]
+        for token in hits:
+            all_old_tokens.append(token)
+            if POOL_FROM_PROMPT:
+                append_new_generated_pool(all_old_tokens[-LEVEL:], token_map, LEVEL, GUESS_SET_SIZE)
 
         if chat:
 
@@ -620,14 +634,14 @@ def jacobi_sample_multilevel(
             prev = len(all_str)
 
         # update generated ids, model inputs, and length for next step
-        input_ids = torch.cat([input_ids, torch.tensor(hits[:max_hit + 1], device=input_ids.device, dtype=input_ids.dtype).unsqueeze(0)], dim=-1)
+        input_ids = torch.cat([input_ids, accepted_tokens], dim=-1)
 
         #input_ids = torch.cat([input_ids, next_tokens[:, None]], dim=-1)
 
 
         ###not change codes below
         if streamer is not None:
-            streamer.put(next_tokens.cpu())
+            streamer.put(accepted_tokens.cpu())
         model_kwargs = self._update_model_kwargs_for_generation(
             outputs, model_kwargs, is_encoder_decoder=self.config.is_encoder_decoder
         )
@@ -643,7 +657,7 @@ def jacobi_sample_multilevel(
                 this_peer_finished = True
 
         # stop if we exceed the maximum length
-        if stopping_criteria(input_ids, scores):
+        if block_stopped:
             this_peer_finished = True
 
         if this_peer_finished and not synced_gpus:
@@ -1142,6 +1156,13 @@ def jacobi_greedy_search_multilevel(
         #not support awq
         assert USE_AWQ == False  
 
+        accepted_tokens, block_stopped = _accepted_prefix(
+            input_ids, hits[:max_hit + 1], eos_token_id, stopping_criteria, scores
+        )
+        hits = hits[:accepted_tokens.shape[-1]]
+        max_hit = len(hits) - 1
+        model_kwargs["attention_mask"] = model_kwargs["attention_mask"][:, :input_ids.shape[-1] + max_hit]
+
         past_key_values = []
 
         #plan to remove kv-cache copy and set tokens into next input when dist_workers > 1, as communication is costly
@@ -1162,19 +1183,12 @@ def jacobi_greedy_search_multilevel(
                 past_key_values.append( (kv[0][:,:,:outputs.kvcache_len + max_hit,:], kv[1][:,:,:outputs.kvcache_len + max_hit,:]) )
             outputs.past_key_values = past_key_values
 
-        lst_token = hits[max_hit]
-
-        #stopping condition
-        for hit_idx in range(max_hit + 1):
-            if eos_token_id is not None and hits[hit_idx] == eos_token_id[0]:
-                all_old_tokens.append(hits[hit_idx])
-                next_tokens = eos_token_id_tensor
-                max_hit = hit_idx
-                break
-            else:
-                all_old_tokens.append(hits[max_hit])
-                if POOL_FROM_PROMPT:
-                    append_new_generated_pool(all_old_tokens[-LEVEL:], token_map, LEVEL, GUESS_SET_SIZE)
+        lst_token = hits[-1]
+        next_tokens = accepted_tokens[:, -1]
+        for token in hits:
+            all_old_tokens.append(token)
+            if POOL_FROM_PROMPT:
+                append_new_generated_pool(all_old_tokens[-LEVEL:], token_map, LEVEL, GUESS_SET_SIZE)
 
 
         if chat and LOCAL_RANK == 0:
@@ -1193,10 +1207,10 @@ def jacobi_greedy_search_multilevel(
                 print(all_str[prev:],  flush=True, end="")
             prev = len(all_str)
         
-        input_ids = torch.cat([input_ids, torch.tensor(hits[:max_hit + 1], device=next_tokens.device, dtype=next_tokens.dtype).unsqueeze(0)], dim=-1)
+        input_ids = torch.cat([input_ids, accepted_tokens], dim=-1)
         
         if streamer is not None:
-            streamer.put(next_tokens.cpu())
+            streamer.put(accepted_tokens.cpu())
         model_kwargs = self._update_model_kwargs_for_generation(
             outputs, model_kwargs, is_encoder_decoder=self.config.is_encoder_decoder
         )
@@ -1212,7 +1226,7 @@ def jacobi_greedy_search_multilevel(
                 this_peer_finished = True
 
         # stop if we exceed the maximum length
-        if stopping_criteria(input_ids, scores):
+        if block_stopped:
             this_peer_finished = True
 
         if this_peer_finished and not synced_gpus:
